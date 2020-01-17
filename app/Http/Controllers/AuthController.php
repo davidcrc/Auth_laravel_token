@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 
 class AuthController extends Controller
 {
-    //
+    //Para el registro, recibe: nombre, email y pass
     public function signup(Request $request)
     {
         $request->validate([
@@ -27,6 +27,7 @@ class AuthController extends Controller
             'message' => 'Successfully created user!'], 201);
     }
 
+    //Para el inicio de sesion, mediante usuario y contraseña
     public function login(Request $request)
     {
         $request->validate([
@@ -57,6 +58,7 @@ class AuthController extends Controller
         ]);
     }
 
+    // Cierra la sesion utilizando un token
     public function logout(Request $request)
     {
         $request->user()->token()->revoke();
@@ -64,6 +66,7 @@ class AuthController extends Controller
             'Successfully logged out']);
     }
 
+    // Obtiene los datos del registro, mediante el token
     public function user(Request $request)
     {
         error_log("Responde con el usuario");
