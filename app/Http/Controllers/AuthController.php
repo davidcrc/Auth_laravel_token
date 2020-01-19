@@ -6,6 +6,8 @@ use App\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Notifications\SignupActivate;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -21,10 +23,27 @@ class AuthController extends Controller
             'name'     => $request->name,
             'email'    => $request->email,
             'password' => bcrypt($request->password),
+            'activation_token'  => Str::random(60),
         ]);
         $user->save();
+
+        $user->notify(new SignupActivate($user));
         return response()->json([
-            'message' => 'Successfully created user!'], 201);
+            'message' => 'Usuario creado existosamente!'], 201);
+    }
+
+    // Confirmar cuenta a usuarios activos.
+    public function signupActivate($token)
+    {
+        $user = User::where('activation_token', $token)->first();
+        if (!$user) {
+            return response()->json(['message' => 'El token de activación es inválido'], 404);
+        }
+        $user->active = true;
+        $user->activation_token = '';
+        $user->save();
+
+        return $user;
     }
 
     //Para el inicio de sesion, mediante usuario y contraseña
@@ -36,9 +55,15 @@ class AuthController extends Controller
             'remember_me' => 'boolean',
         ]);
         $credentials = request(['email', 'password']);
+
+        // Actualizamos el login para verificar que al activar el token,
+        // esta cuenta aún exista.
+        $credentials['active'] = 1;
+        $credentials['deleted_at'] = null;
+
         if (!Auth::attempt($credentials)) {
             return response()->json([
-                'message' => 'Unauthorized'], 401);
+                'message' => 'No Autorizado'], 401);
         }
 
         $user = $request->user();

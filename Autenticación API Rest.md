@@ -60,3 +60,166 @@ Autenticacion utilizando Auth de laravel / Passport
 
 - Link: 
 https://medium.com/@cvallejo/sistema-de-autenticaci%C3%B3n-api-rest-con-laravel-5-6-240be1f3fc7d
+
+
+# Generación de notificaciones y envio de confirmación por email
+
+1.- Añadir tres campos a la columna User : database/migrations/xxxx_create_users_table.php
+
+    $table->boolean('active')->default(false);
+    $table->string('activation_token');
+    .
+    .
+    $table->softDeletes();
+
+2.- Añadir o modifcar en App\User:
+
+    use Illuminate\Database\Eloquent\SoftDeletes;
+    
+    class User .. (){
+        use HasApiTokens, Notifiable, SoftDeletes;
+        protected $dates = ['deleted_at'];
+
+        protected $fillable = [
+        'name', 'email', 'password', 'active', 'activation_token',
+        ];
+        protected $hidden = [
+            'password', 'remember_token', 'activation_token',
+        ];
+    }
+
+    - Luego realizar un refresh:
+        php artisan migrate:refresh
+
+3.- CREAR UNA NOTIFICATIONS: 
+
+    php artisan make:notification SignupActivate
+
+    - Con lo anterior se creó: app/Notifications/SignupActivate.php
+    - Modificar al gusto...
+
+    public function via($notifiable)
+    {
+        return ['mail'];
+    }
+
+    public function toMail($notifiable)
+    {
+        $url = url('/api/auth/signup/activate/'.$notifiable->activation_token);
+        return (new MailMessage)
+            ->subject('Confirma tu cuenta')
+            ->line('Gracias por suscribirte! Antes de continuar, debes configurar tu cuenta.')
+            ->action('Confirmar tu cuenta', url($url))
+            ->line('Muchas gracias por utilizar nuestra aplicación!');
+    }
+
+    - PARA PODER UTILIZAR EL CORREO HAY QUE IMPORTAR:
+
+        php artisan vendor:publish --tag=laravel-mail
+
+4.- Crear y enviar token para confirmar la cuenta: Modificar en app/Http/Controllers/AuthController.php
+
+    - Para el random hay que instalar: 
+        composer require laravel/helpers
+
+
+    <?php
+    ...
+    use App\Notifications\SignupActivate;
+    use Illuminate\Support\Str;
+    class AuthController extends Controller
+    {
+    ...
+        public function signup(Request $request)
+        {
+            $request->validate([
+                'name'      => 'required|string',
+                'email'     => 'required|string|email|unique:users',
+                'password'  => 'required|string|confirmed',
+            ]);
+            $user = new User([
+                'name'              => $request->name,
+                'email'             => $request->email,
+                'password'          => bcrypt($request->password),
+                'activation_token'  => Str::random(60),
+            ]);
+            $user->save();
+            $user->notify(new SignupActivate($user));
+            
+            return response()->json(['message' => 'Usuario creado existosamente!'], 201);
+        }
+    }
+
+5.- Agregar la ruta para la activación de la cuenta:
+
+    - Hay que agregar la nueva ruta signup/activate/{token} en el archivo routes/api.php.
+
+    <?php
+    Route::group(['prefix' => 'auth'], function () {
+        Route::post('login', 'AuthController@login');
+        Route::post('signup', 'AuthController@signup');
+        Route::get('signup/activate/{token}', 'AuthController@signupActivate');
+    
+        Route::group(['middleware' => 'auth:api'], function () {
+            Route::get('logout', 'AuthController@logout');
+            Route::get('user', 'AuthController@user');
+        });
+    });
+
+6.- Confirmar cuenta a usuarios activos. En app/Http/Controllers/AuthController.php, añadir:
+
+    public function signupActivate($token)
+    {
+        $user = User::where('activation_token', $token)->first();
+        if (!$user) {
+            return response()->json(['message' => 'El token de activación es inválido'], 404);
+        }
+        $user->active = true;
+        $user->activation_token = '';
+        $user->save();
+
+        // Aqui retornar un success o lo que se desee
+        return $user;
+    }
+
+7.- Validación de la cuenta. Modificar app/Http/Controllers/AuthController.php:
+
+    public function login(Request $request)
+    {
+        $request->validate([
+            'email'       => 'required|string|email',
+            'password'    => 'required|string',
+            'remember_me' => 'boolean',
+        ]);
+        $credentials = request(['email', 'password']);
+        
+        // Actualizamos el login para verificar que al activar el token,
+        // esta cuenta aún exista.
+        $credentials['active'] = 1;
+        $credentials['deleted_at'] = null;
+        
+        if (!Auth::attempt($credentials)) {
+            return response()->json(['message' => 'No Autorizado'], 401);
+        }
+        $user = $request->user();
+        $tokenResult = $user->createToken('Token Acceso Personal');
+        $token = $tokenResult->token;
+        if ($request->remember_me) {
+            $token->expires_at = Carbon::now()->addWeeks(1);
+        }
+        $token->save();
+        return response()->json([
+            'access_token' => $tokenResult->accessToken,
+            'token_type'   => 'Bearer',
+            'expires_at'   => Carbon::parse($tokenResult->token->expires_at)->toDateTimeString(),
+        ]);
+    }
+
+8.- Configuración archivo ".env"
+
+    Crear una cuenta en mailtrap.io y configurar el .env
+
+    - Diferentes configuraciones se realizan con postman, utlizando POST y GET, funciona correctamente.
+
+    - Link: 
+    https://medium.com/@cvallejo/sistema-de-autenticaci%C3%B3n-api-rest-con-laravel-5-6-572a16e3929b
