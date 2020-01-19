@@ -223,3 +223,97 @@ https://medium.com/@cvallejo/sistema-de-autenticaci%C3%B3n-api-rest-con-laravel-
 
     - Link: 
     https://medium.com/@cvallejo/sistema-de-autenticaci%C3%B3n-api-rest-con-laravel-5-6-572a16e3929b
+
+# Generar un Avatar
+
+1.- Instalar: 
+
+    composer require laravolt/avatar
+
+    - Opcional: Publicar para ver su configuracion,
+    creará un archivo en : config/laravolt/avatar.php
+    
+    php artisan vendor:publish -provider="Laravolt\Avatar\ServiceProvider"
+
+    - Adicionalmente una opción es registrar el alias en la carpeta config\app.php: (Verificar si ya esta registrado!)
+
+        'Auth'         => Illuminate\Support\Facades\Auth::class,
+
+    - ADEMAS instalar, luego reiniciar el servicio de PHP:
+        sudo apt install imagemagick php-imagick
+    
+    - Esto debería crear un link a la carpeta public
+        php artisan storage:link
+    
+    
+
+2.- Agregar columna a la tabla usuarios. Añadir en database/migrations/xxxx_create_users_table.php:
+
+    public function up()
+    {
+        ...
+
+        $table->string('avatar')->default('avatar.png');
+        
+        ...
+
+    }
+    - Luego añadir en App\User.php:
+        protected $fillable = [
+            'name', 'email', 'password', 'active', 'activation_token', 'avatar',
+        ];
+    - Por ultimo:
+        php artisan migrate:refresh
+
+
+3.- Crear avatar para cada cuenta de usuario. Modificar en app/Http/Controllers/AuthController.php:
+    (El avatar será creado en la carpeta storage/avatars )
+
+    namespace App\Http\Controllers;
+    use Avatar;             //add avatar
+    use Storage;            //add avatar storage
+    use App\User;
+    use Carbon\Carbon;
+    use Illuminate\Http\Request;
+    use Illuminate\Support\Facades\Auth;
+    use App\Notifications\SignupActivate;
+    class AuthController extends Controller
+    {
+        ...
+        public function signup(Request $request)
+        {
+            $request->validate([
+                'name'      => 'required|string',
+                'email'     => 'required|string|email|unique:users',
+                'password'  => 'required|string|confirmed',
+            ]);
+            $user = new User([
+                'name'              => $request->name,
+                'email'             => $request->email,
+                'password'          => bcrypt($request->password),
+                'activation_token'  => str_random(60),
+            ]);
+            $user->save();
+            // add avatar, estas dos lineas, crean un avatr con el nombre del usuario
+            $avatar = Avatar::create($user->name)->getImageObject()->encode('png');
+            Storage::put('avatars/'.$user->id.'/avatar.png', (string) $avatar);
+            
+            $user->notify(new SignupActivate($user));
+            return response()->json(['message' => 'Usuario creado existosamente!'], 201);
+        }
+    ...
+
+
+4.- Obtener el avatar de un usuario autenticado
+
+    use Storage;
+    ...
+    protected $appends = ['avatar_url'];
+    protected $dates = ...
+    ...
+    
+    public function getAvatarUrlAttribute()
+    {
+        return Storage::url('avatars/'.$this->id.'/'.$this->avatar);
+    }
+

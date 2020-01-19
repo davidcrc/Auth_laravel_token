@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use Avatar;             //add avatar
+use Storage;            //add avatar storage
 use App\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -27,6 +29,10 @@ class AuthController extends Controller
         ]);
         $user->save();
 
+        // add avatar, estas dos lineas, crean un avatr con el nombre del usuario
+        $avatar = Avatar::create($user->name)->getImageObject()->encode('png');
+        error_log("EL ID DEL USUARIO: ", $user->id);
+        Storage::put('avatars/'.$user->id.'/avatar.png', (string) $avatar);
         $user->notify(new SignupActivate($user));
         return response()->json([
             'message' => 'Usuario creado existosamente!'], 201);
