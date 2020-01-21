@@ -562,3 +562,86 @@ https://medium.com/@cvallejo/sistema-de-autenticaci%C3%B3n-api-rest-con-laravel-
     https://medium.com/@cvallejo/sistema-de-autenticaci%C3%B3n-api-rest-con-laravel-5-6-parte-4-7365cc22d78b
 
 -- PRUEBAS: Durante el uso de postman, recibio bien cuando se enviaan los datos por "params" quiza exista algo en las rutas que no me dejan enviar datos por body->raw !!
+
+
+# Enviar notificaciones con espera en Redis
+
+1.- Instalar redis:
+    sudo apt install redis-server
+
+- Modificar su archivo:
+
+        sudo nano /etc/redis/redis.conf
+
+- Si estas en ubuntu modificar: de: supervised no a:
+
+        supervised systemd    
+
+2.- Configurar el .env
+
+    QUEUE_DRIVER=redis
+    REDIS_HOST=127.0.0.1
+    REDIS_PASSWORD=null
+    REDIS_PORT=6379
+
+3.- Instalar el controlador de Redis
+
+    composer require predis/predis
+
+4.- Configurar el uso de Queue en las Notificaciones
+
+    // verificar si esta añadida esta linea
+    use Illuminate\Contracts\Queue\ShouldQueue;
+
+    class SignupActivate extends Notification implements ShouldQueue{
+        ...
+    }
+
+5.- Ejecutar el "queue worker"
+
+    php artisan queue:work
+
+6.- (opcional para producción) Instalación y Configuración del Supervisor:
+
+    sudo apt-get install supervisor
+
+- En la carpeta config.d:
+
+        cd /etc/supervisor/conf.d
+
+- Crear el archivo de configuración
+
+        mkdir laravel-worker.conf
+
+- Añadir el siguinte codigo:
+
+        [program:laravel-worker]
+        process_name=%(program_name)s_%(process_num)02d
+        command=php /var/www/project_name/artisan queue:work redis --sleep=3 --tries=3
+        autostart=true
+        autorestart=true
+        user=www-data
+        numprocs=8
+        redirect_stderr=true
+        stdout_logfile=/var/www/project_name/storage/logs/worker.log
+
+- Iniciar el supervisor:
+
+        sudo supervisorctl reread
+        sudo supervisorctl update
+        sudo supervisorctl start laravel-worker:*
+
+
+- Link: 
+
+    https://medium.com/@cvallejo/sistema-de-autenticaci%C3%B3n-api-rest-con-laravel-5-6-parte-5-2725f02ab4de
+
+    - Headers:
+        Content-Type: application/json
+        X-Requested-With: XMLHttpRequest
+
+    - Registar usuario: http://127.0.0.1:8000/api/auth/signup
+        name:
+        email:
+        password:
+        password_confirmation:
